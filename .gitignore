@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 运行时数据产物（含个人健康数据，禁止入库）
+data/
+output/
+
+# macOS
+.DS_Store
+
+# 编辑器
+.idea/
+.vscode/
