@@ -10,6 +10,7 @@
 """
 import json
 import os
+import re
 
 BASE = os.environ.get("WORK_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TREND_PATH = os.path.join(BASE, "data", "trend_analysis.json")
@@ -24,6 +25,27 @@ with open(DS_PATH, encoding="utf-8") as f:
     ds = json.load(f)
 
 YEARS = trend["years"]
+
+def mask_identity_text(text):
+    """P0 整改：对小结/结论文本做机构与身份信息展示层脱敏。
+
+    对医生小结与影像检查结论等自由文本，掩码手机号、身份证号、医师署名，
+    并将医院/体检机构名称泛化为「体检机构」，避免报告正文泄露机构与身份信息。
+    """
+    if not text:
+        return text
+    t = text
+    # 手机号：138****5678
+    t = re.sub(r"1[3-9]\d{9}", lambda m: m.group(0)[:3] + "****" + m.group(0)[-4:], t)
+    # 身份证号：110101********12
+    t = re.sub(r"\d{17}[\dXx]", lambda m: m.group(0)[:6] + "********" + m.group(0)[-2:], t)
+    # 医师署名：初检医师：张三 → 初检医师：***
+    t = re.sub(r"(初检医师|终检医师|检验者|审核者|检验师|医师)[：:]\s*[\u4e00-\u9fa5]{2,4}", r"\1：***", t)
+    # 医院/体检机构名称 → 泛化
+    t = re.sub(r"[\u4e00-\u9fa5A-Za-z0-9]{2,12}(人民医院|中心医院|中医院|医院)", "体检机构", t)
+    t = re.sub(r"[\u4e00-\u9fa5A-Za-z0-9]{2,12}(健康管理中心|健康体检中心|体检中心)", "体检机构", t)
+    return t
+
 
 def fmt(v, unit=""):
     if v is None:
@@ -61,7 +83,7 @@ def main():
     A("")
     A(f"> **报告日期**：2026-08-16　|　**覆盖年份**：{years_str}（2022 年数据为扫描件 OCR 提取，供参考）　|　**数据来源**：历年体检报告（已脱敏）")
     A(">")
-    A("> **隐私声明**：本报告基于本地数据生成，不进行云端存储；姓名、证件号、联系方式、地址、单位、医院等个人身份信息均已脱敏，仅保留指标数值用于分析。")
+    A("> **隐私声明**：本报告基于本地数据生成，不进行云端存储；姓名、证件号、联系方式、地址、单位等身份信息均已脱敏；体检小结与影像结论中的机构名称、医师姓名已做展示层脱敏，原始文本仅保留于本地完整数据集，如需分享请使用脱敏数据集。")
     A("")
     A("---")
     A("")
@@ -340,7 +362,7 @@ def main():
         A(f"### {y} 年")
         A("")
         for item in ds["summaries"].get(str(y), []):
-            A(f"- {item}")
+            A(f"- {mask_identity_text(item)}")
         A("")
     A("---")
     A("")
@@ -359,7 +381,7 @@ def main():
             if txt:
                 A(f"**{y}年**：")
                 for line in txt.split("\n"):
-                    A(f"- {line.strip()}")
+                    A(f"- {mask_identity_text(line.strip())}")
                 A("")
         A("")
     A("---")
