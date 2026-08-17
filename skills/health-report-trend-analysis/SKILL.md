@@ -8,7 +8,7 @@ description: >-
   （异常/显著变化/趋好趋坏）、权威医学解读（默沙东/丁香医生/中国指南）、
   结构化 Markdown 报告与离线 HTML 工作台。全程本地处理，自动生成脱敏数据集。
   趋势判定聚焦近三年（TREND_FOCUS_YEARS 可配置）。
-version: "1.0.1"
+version: "1.0.2"
 license: MIT
 tags: [体检, 健康管理, 趋势分析, 指标, 医学解读, health, wellness, OCR]
 ---
@@ -81,7 +81,7 @@ export PY=/path/to/python                    # 建议用带依赖的 python 解�
 ## 关键规则
 
 - **新增年度报告**：放入 `REPORT_DIR` → 重跑 2→6 步即可（解析/归一化/趋势/交付自动含新数据）；字典未收录指标在 `data/unrecognized` 记录，补 `indicator_dict.py` 的 `NAME_MAP` 一行即可
-- **隐私硬约束**：全程本地；任务完成必须生成并校验脱敏版（不含姓名/证件号/电话/地址/医院），分享只用 `anonymized_dataset.json`；报告正文中的体检小结与影像结论已做展示层脱敏（机构名称、医师姓名掩码，见 `report_generator.py` 的 `mask_identity_text`）
+- **隐私硬约束**：全程本地；任务完成必须生成并校验脱敏版（不含姓名/证件号/电话/地址/医院），分享只用 `anonymized_dataset.json`；报告正文中的体检小结与影像结论已做展示层脱敏（机构名称、医师姓名掩码，见 `report_generator.py` 的 `mask_identity_text`）；`build_dataset.py` 末尾自动校验脱敏版（身份证/手机号/邮箱/医院名正则扫描，命中即报错退出）
 - **OCR 数据定位**：OCR 提取的指标只用于图表展示（灰色 Ⓞ 标注），**不参与显著变化判定**，避免污染统计
 - **趋势聚焦**：整体趋势与首末对比仅基于 `trend_analysis.py` 中 `TREND_FOCUS_YEARS`（默认近三年），历史数据仅作展示背景
 - **口径一致性**：异常判定用**当年报告自带参考范围**（试剂更换自动适配，如直接胆红素 2025 年起 0.0–4.0 → 1.7–6.8）

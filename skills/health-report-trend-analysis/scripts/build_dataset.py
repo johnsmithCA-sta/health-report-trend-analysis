@@ -259,6 +259,9 @@ def build():
     print(f"\n✓ dataset_std.json 已更新（含 OCR 数据）")
     print(f"✓ years 范围: {dataset['years']}")
 
+    # 脱敏版自动校验（P1 整改：命中身份/机构信息即报错退出）
+    verify_anonymized(ANON_PATH)
+
 
 # OCR 注入（确保 build_dataset 之后不会被覆盖）
 PLAUSIBLE_RANGES = {
@@ -392,6 +395,28 @@ def _inject_ocr(dataset):
         print(f"\n[OCR 注入] 接受 {len(accepted)} 项: {', '.join(accepted[:8])}{'...' if len(accepted)>8 else ''}")
         if rejected:
             print(f"[OCR 注入] 拒绝 {len(rejected)} 项: {[(k, r) for k, r in rejected[:3]]}")
+
+
+# ---- 脱敏版自动校验（P1 整改）----
+IDENTITY_PATTERNS = [
+    ("手机号", re.compile(r"1[3-9]\d{9}")),
+    ("身份证号", re.compile(r"\d{17}[\dXx]")),
+    ("邮箱地址", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")),
+    ("医院名称", re.compile(r"[\u4e00-\u9fa5]{2,12}(人民医院|中心医院|中医院|医院)")),
+]
+
+
+def verify_anonymized(path):
+    """校验脱敏版数据不含身份/机构信息，命中即报错退出。"""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    problems = []
+    for label, pattern in IDENTITY_PATTERNS:
+        if pattern.search(text):
+            problems.append(label)
+    if problems:
+        raise SystemExit(f"[FAIL] 脱敏版仍含疑似身份/机构信息: {', '.join(problems)}，请检查脱敏逻辑后重试")
+    print("✓ 脱敏版自动校验通过：未发现手机号/身份证号/邮箱/医院名称等身份信息")
 
 
 if __name__ == "__main__":
