@@ -1,16 +1,12 @@
 ---
 name: health-report-trend-analysis
-description: >-
-  体检指标趋势分析系统。当用户要求对历年体检报告进行数据化处理、指标趋势分析、
-  健康管理工作台展示（体检报告、指标趋势、历年体检、健康管理、体检数据解析、
-  化验单分析）时使用。支持 3 种输入形态：电子版 PDF（文本层）、扫描件 PDF、
-  照片 JPG（自动合成 PDF）；产出统一指标字典（116 指标）、历年趋势比对
-  （异常/显著变化/趋好趋坏）、权威医学解读（默沙东/丁香医生/中国指南）、
-  结构化 Markdown 报告与离线 HTML 工作台。全程本地处理，自动生成脱敏数据集。
-  趋势判定聚焦近三年（TREND_FOCUS_YEARS 可配置）。
-version: "1.0.2"
+slug: health-report-trend-analysis
+displayName: 体检指标趋势分析
+summary: 多年度体检报告趋势分析：解析电子/扫描/照片三种报告形态，产出统一指标字典、异常与趋好趋坏判定、权威医学解读、Markdown 报告与离线 HTML 工作台。
+description: 体检指标趋势分析系统。当用户要求对历年体检报告进行数据化处理、指标趋势分析、健康管理工作台展示（体检报告、指标趋势、历年体检、健康管理、体检数据解析、化验单分析）时使用。支持 3 种输入形态：电子版 PDF（文本层）、扫描件 PDF、照片 JPG（自动合成 PDF）；产出统一指标字典（116 指标）、历年趋势比对（异常/显著变化/趋好趋坏）、权威医学解读（默沙东/丁香医生/中国指南）、结构化 Markdown 报告与离线 HTML 工作台。全程本地处理，自动生成脱敏数据集。趋势判定聚焦近三年（TREND_FOCUS_YEARS 可配置）。
+version: 1.0.3
 license: MIT
-tags: [体检, 健康管理, 趋势分析, 指标, 医学解读, health, wellness, OCR]
+agent_created: true
 ---
 
 # 体检指标趋势分析系统
@@ -18,12 +14,6 @@ tags: [体检, 健康管理, 趋势分析, 指标, 医学解读, health, wellnes
 ## 用途
 
 将多年度、多形态（电子 PDF / 扫描件 / 照片）的体检报告统一解析为标准化指标时间序列，产出趋势分析报告 + 交互式健康管理工作台。全本地处理、自动脱敏、动态扩展（新增报告重跑流水线即可）。
-
-## 触发词
-
-- "帮我把 XX 年体检报告加进去，更新趋势分析"
-- "分析历年体检报告 / 体检指标趋势"
-- "健康管理工作台 / 体检数据解析 / 化验单分析"
 
 ## 环境准备
 
@@ -55,7 +45,7 @@ export PY=/path/to/python                    # 建议用带依赖的 python 解�
    ```bash
    $PY scripts/build_dataset.py
    ```
-   产出 `data/dataset_std.json` + `data/anonymized_dataset.json`
+   产出 `data/dataset_std.json`（完整版，本地受控）+ `data/anonymized/anonymized_dataset_anon_shareable.json`（脱敏版，独立子目录+只读 444+可分享）
 5. **趋势分析**（当年口径判定异常、显著变化 ≥20% 或 ≥参考宽度 30%、趋好/趋坏、近三年聚焦）：
    ```bash
    $PY scripts/trend_analysis.py
@@ -81,7 +71,7 @@ export PY=/path/to/python                    # 建议用带依赖的 python 解�
 ## 关键规则
 
 - **新增年度报告**：放入 `REPORT_DIR` → 重跑 2→6 步即可（解析/归一化/趋势/交付自动含新数据）；字典未收录指标在 `data/unrecognized` 记录，补 `indicator_dict.py` 的 `NAME_MAP` 一行即可
-- **隐私硬约束**：全程本地；任务完成必须生成并校验脱敏版（不含姓名/证件号/电话/地址/医院），分享只用 `anonymized_dataset.json`；报告正文中的体检小结与影像结论已做展示层脱敏（机构名称、医师姓名掩码，见 `report_generator.py` 的 `mask_identity_text`）；`build_dataset.py` 末尾自动校验脱敏版（身份证/手机号/邮箱/医院名正则扫描，命中即报错退出）
+- **隐私硬约束**：全程本地；任务完成必须生成并校验脱敏版（不含姓名/证件号/电话/地址/医院），分享只用 `data/anonymized/anonymized_dataset_anon_shareable.json`（与完整版 `dataset_std.json` 分目录强隔离、只读 444，防止误分享完整版）；报告正文中的体检小结与影像结论已做展示层脱敏（机构名称、医师姓名掩码，见 `report_generator.py` 的 `mask_identity_text`）；`build_dataset.py` 末尾自动校验脱敏版（身份证/手机号/邮箱/医院名正则扫描，命中即报错退出）
 - **OCR 数据定位**：OCR 提取的指标只用于图表展示（灰色 Ⓞ 标注），**不参与显著变化判定**，避免污染统计
 - **趋势聚焦**：整体趋势与首末对比仅基于 `trend_analysis.py` 中 `TREND_FOCUS_YEARS`（默认近三年），历史数据仅作展示背景
 - **口径一致性**：异常判定用**当年报告自带参考范围**（试剂更换自动适配，如直接胆红素 2025 年起 0.0–4.0 → 1.7–6.8）
@@ -117,4 +107,11 @@ export PY=/path/to/python                    # 建议用带依赖的 python 解�
 3. **子代理隔离**：大文件读取/格式探测交给 Explore 子代理，主线程只收结论
 4. 验证只做一次最终截图，中间迭代用 DOM/JS 检查替代
 
-详见 `references/降本纪律.md`。
+## Changelog
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| 1.0.3 | 2026-08-23 | **P2 M-1 整改（技能安全）**：脱敏版强隔离——`anonymized_dataset.json` → `data/anonymized/anonymized_dataset_anon_shareable.json`（独立子目录 + 只读 444 + `_anon_shareable` 命名标记），防止完整版与脱敏版混放误分享；`build_dataset.py` 新增 `_write_anon()`（tmp+replace 原子写入 + chmod 444）；report_generator 隐私声明路径同步 |
+| 1.0.2 | 2026-08-17 | P1 整改：`build_dataset.py` 末尾新增 `verify_anonymized` 自动校验（身份证/手机号/邮箱/医院名正则扫描，命中即报错退出） |
+| 1.0.1 | 2026-08-17 | P0 整改：`report_generator.py` 新增 `mask_identity_text` 脱敏函数（手机号/身份证/医师署名掩码 + 机构泛化），小结/结论文本展示层脱敏；隐私声明与实际输出对齐 |
+| 1.0.0 | 2026-08-16 | 初版：体检指标趋势分析系统 |

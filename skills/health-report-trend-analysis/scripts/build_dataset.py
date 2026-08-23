@@ -18,7 +18,23 @@ from indicator_dict import NAME_MAP, UNIT_MAP, INDICATOR_META, CATEGORY_OVERRIDE
 BASE = os.environ.get("WORK_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_PATH = os.path.join(BASE, "data", "reports_raw.json")
 STD_PATH = os.path.join(BASE, "data", "dataset_std.json")
-ANON_PATH = os.path.join(BASE, "data", "anonymized_dataset.json")
+# 脱敏版强隔离（P2 M-1）：独立子目录 + _anon_shareable 命名标记，与完整版 dataset_std.json 分目录存放，
+# 防止脱敏版被误当完整数据、完整版被误当可分享数据；写入后置只读权限。
+ANON_DIR = os.path.join(BASE, "data", "anonymized")
+ANON_PATH = os.path.join(ANON_DIR, "anonymized_dataset_anon_shareable.json")
+
+
+def _write_anon(anon_dict):
+    """写入脱敏版：确保目录存在 + 只读权限（防止被误改/误同步为完整数据）。"""
+    os.makedirs(ANON_DIR, exist_ok=True)
+    tmp = ANON_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(anon_dict, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, ANON_PATH)
+    try:
+        os.chmod(ANON_PATH, 0o444)  # 只读：脱敏版为可分享产物，禁止覆盖/误改
+    except OSError:
+        pass
 
 # 需过滤的脏数据（小结段落混入）
 DIRTY_PATTERNS = [
@@ -210,8 +226,7 @@ def build():
             for k, v in dataset["measurements"].items()
         },
     }
-    with open(ANON_PATH, "w", encoding="utf-8") as f:
-        json.dump(anon, f, ensure_ascii=False, indent=2)
+    _write_anon(anon)
 
     # 统计报告
     n_series = sum(len(ind["series"]) for ind in dataset["indicators"])
@@ -242,19 +257,18 @@ def build():
     # 重新写盘（含 OCR 与更新后的 years）
     with open(STD_PATH, "w", encoding="utf-8") as f:
         json.dump(dataset, f, ensure_ascii=False, indent=2)
-    with open(ANON_PATH, "w", encoding="utf-8") as f:
-        anon = {
-            "anonymized": True,
-            "note": "已脱敏：不含姓名、证件号、电话、地址、单位、医院等任何身份信息。",
-            "years": dataset["years"],
-            "indicators": [{"key": i["key"], "category": i["category"], "unit": i["unit"],
-                          "display": i["display"],
-                          "series": [{"year": e["year"], "value": e["value"], "value_str": e["value_str"]}
-                                      for e in i["series"]]} for i in dataset["indicators"]],
-            "measurements": {k: [{"year": m["year"], "value": m["value"], "value_str": m["value_str"]} for m in v]
-                             for k, v in dataset["measurements"].items()},
-        }
-        json.dump(anon, f, ensure_ascii=False, indent=2)
+    # 脱敏版同步重建（含 OCR 注入后的数据）
+    _write_anon({
+        "anonymized": True,
+        "note": "已脱敏：不含姓名、证件号、电话、地址、单位、医院等任何身份信息。",
+        "years": dataset["years"],
+        "indicators": [{"key": i["key"], "category": i["category"], "unit": i["unit"],
+                      "display": i["display"],
+                      "series": [{"year": e["year"], "value": e["value"], "value_str": e["value_str"]}
+                                  for e in i["series"]]} for i in dataset["indicators"]],
+        "measurements": {k: [{"year": m["year"], "value": m["value"], "value_str": m["value_str"]} for m in v]
+                         for k, v in dataset["measurements"].items()},
+    })
     # 移除 _inject_ocr 内部独立写盘（已统一）
     print(f"\n✓ dataset_std.json 已更新（含 OCR 数据）")
     print(f"✓ years 范围: {dataset['years']}")
