@@ -1,0 +1,11 @@
+{
+  "name": "新年份接入不改代码",
+  "prompt": "验证新增一个年份的体检报告时，extract.py 能直接处理，无需修改任何脚本（兑现「新报告接入无需人工调整即可自动重算」的承诺）。",
+  "assertions": [
+    "NEWYEAR_START",
+    "FIXTURE_READY=True",
+    "EXTRACT_NEW_YEAR_EXIT=0",
+    "NEW_YEAR_NO_CODE_CHANGE=OK",
+    "MATCHED_KEY=总胆固醇"
+  ]
+}

@@ -1,0 +1,12 @@
+echo "DEPS_CHECK_START"
+python3 ../../scripts/check_deps.py --json > deps.json 2>&1
+echo "DEPS_EXIT=$?"
+python3 -c "
+import json
+d = json.load(open('deps.json'))
+print('DEPS_JSON_PARSED=True')
+print('missing_required=%d' % d['missing_required'])
+print('missing_optional=%d' % d['missing_optional'])
+for x in d['deps']:
+    print('DEP %s %s' % (x['name'], x['status']))
+" 

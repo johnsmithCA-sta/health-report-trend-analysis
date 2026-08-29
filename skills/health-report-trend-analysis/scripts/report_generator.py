@@ -8,31 +8,40 @@
 - 趋势结论、逐年医生结论、方法学说明、动态扩展说明
 输出: output/体检指标趋势分析报告.md
 """
+import argparse
 import json
 import os
 import re
+import sys
 
 BASE = os.environ.get("WORK_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TREND_PATH = os.path.join(BASE, "data", "trend_analysis.json")
-DS_PATH = os.path.join(BASE, "data", "dataset_std.json")
-OUT_DIR = os.path.join(BASE, "output")
-os.makedirs(OUT_DIR, exist_ok=True)
+DEFAULT_DATA_DIR = os.path.join(BASE, "data")
+DEFAULT_OUT_DIR = os.path.join(BASE, "output")
+
+TREND_PATH = os.path.join(DEFAULT_DATA_DIR, "trend_analysis.json")
+DS_PATH = os.path.join(DEFAULT_DATA_DIR, "dataset_std.json")
+OUT_DIR = DEFAULT_OUT_DIR
 OUT_PATH = os.path.join(OUT_DIR, "体检指标趋势分析报告.md")
 
-with open(TREND_PATH, encoding="utf-8") as f:
-    trend = json.load(f)
-with open(DS_PATH, encoding="utf-8") as f:
-    ds = json.load(f)
+# 脱敏总开关：**默认开启**（隐私红线）。仅 --no-mask 显式关闭，关闭时报告内会写入警示行。
+MASK_ENABLED = True
 
-YEARS = trend["years"]
+# 输入数据延迟加载：模块级不做任何文件 IO、不建目录。
+# 原因：--help 必须在缺数据时也能跑通；模块级 open() 会让 argparse 还没执行就崩
+# （build_dashboard.py 曾踩同一个坑）。
+trend = {}
+ds = {}
+YEARS = []
 
 def mask_identity_text(text):
     """P0 整改：对小结/结论文本做机构与身份信息展示层脱敏。
 
     对医生小结与影像检查结论等自由文本，掩码手机号、身份证号、医师署名，
     并将医院/体检机构名称泛化为「体检机构」，避免报告正文泄露机构与身份信息。
+
+    受全局开关 MASK_ENABLED 控制：--no-mask 时原样返回（仅用于本地核对原文）。
     """
-    if not text:
+    if not MASK_ENABLED or not text:
         return text
     t = text
     # 手机号：138****5678
@@ -439,6 +448,110 @@ def main():
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         f.write("\n".join(md))
     print(f"已生成: {OUT_PATH}")
+    return 0
+
+
+def load_inputs(trend_path=None, ds_path=None):
+    """延迟加载输入数据并回填全局（供 main() 及各渲染函数使用）。
+
+    缺文件时返回非 0 退出码，不抛 traceback。
+    """
+    global TREND_PATH, DS_PATH, trend, ds, YEARS
+    TREND_PATH = trend_path or TREND_PATH
+    DS_PATH = ds_path or DS_PATH
+    try:
+        with open(TREND_PATH, encoding="utf-8") as f:
+            trend = json.load(f)
+        with open(DS_PATH, encoding="utf-8") as f:
+            ds = json.load(f)
+    except FileNotFoundError as e:
+        print(f"[错误] 输入文件不存在: {e.filename}（先跑 trend_analysis.py，或用 --work-dir/--trend-json 指定）")
+        return 1
+    except json.JSONDecodeError as e:
+        print(f"[错误] 输入文件不是合法 JSON: {e}")
+        return 1
+    YEARS = trend.get("years", [])
+    return 0
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="report_generator.py",
+        description="体检指标趋势分析 Markdown 报告生成器（默认输出 <work-dir>/output/体检指标趋势分析报告.md）",
+        epilog="""
+示例:
+  python3 scripts/report_generator.py                       # 按 $WORK_DIR 生成报告
+  python3 scripts/report_generator.py --work-dir ~/体检数据   # 指定工作目录
+  python3 scripts/report_generator.py --out /tmp/report.md  # 指定输出路径
+  python3 scripts/report_generator.py --no-mask             # 关闭正文脱敏（仅供本地核对，勿分享）
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--work-dir", metavar="目录", default=None,
+                        help=f"工作数据目录（默认 $WORK_DIR 或技能根，当前: {BASE}）")
+    parser.add_argument("--data-dir", metavar="目录", default=None,
+                        help="数据目录，覆盖 <work-dir>/data")
+    parser.add_argument("--trend-json", metavar="文件", default=None,
+                        help="趋势分析结果路径，覆盖 <data-dir>/trend_analysis.json")
+    parser.add_argument("--dataset-json", metavar="文件", default=None,
+                        help="标准数据集路径，覆盖 <data-dir>/dataset_std.json")
+    parser.add_argument("--out", metavar="文件", default=None,
+                        help="输出 Markdown 路径，覆盖 <work-dir>/output/体检指标趋势分析报告.md")
+    parser.add_argument("--no-mask", action="store_true",
+                        help="关闭正文展示层脱敏（手机号/身份证/医师署名/机构名）。"
+                             "**默认脱敏**，仅本地核对原文时使用，生成物切勿分享")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="只校验输入与渲染流程，不写输出文件")
+    return parser
+
+
+def cli(argv=None):
+    global MASK_ENABLED, OUT_PATH, OUT_DIR
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.work_dir and not os.path.isdir(args.work_dir):
+        parser.error(f"--work-dir 目录不存在: {args.work_dir}")
+    if args.data_dir and not os.path.isdir(args.data_dir):
+        parser.error(f"--data-dir 目录不存在: {args.data_dir}")
+    for flag, p in (("--trend-json", args.trend_json), ("--dataset-json", args.dataset_json)):
+        if p and not os.path.isfile(p):
+            parser.error(f"{flag} 文件不存在: {p}")
+
+    # 路径解析：CLI > 环境变量 > 默认
+    data_dir = args.data_dir or (
+        os.path.join(args.work_dir, "data") if args.work_dir else DEFAULT_DATA_DIR)
+    out_dir = os.path.join(args.work_dir, "output") if args.work_dir else DEFAULT_OUT_DIR
+
+    if args.trend_json and args.dataset_json:
+        trend_path, ds_path = args.trend_json, args.dataset_json
+    else:
+        trend_path = args.trend_json or os.path.join(data_dir, "trend_analysis.json")
+        ds_path = args.dataset_json or os.path.join(data_dir, "dataset_std.json")
+
+    if args.out:
+        OUT_PATH = args.out
+        OUT_DIR = os.path.dirname(os.path.abspath(args.out))
+    else:
+        OUT_DIR = out_dir
+        OUT_PATH = os.path.join(out_dir, "体检指标趋势分析报告.md")
+
+    rc = load_inputs(trend_path, ds_path)
+    if rc != 0:
+        return rc
+
+    if args.no_mask:
+        MASK_ENABLED = False
+        print("[警告] --no-mask 已指定：本次**关闭**正文脱敏，生成物含机构名/医师署名等原文，切勿分享")
+
+    if args.dry_run:
+        print(f"[dry-run] 将生成: {OUT_PATH}（年份 {YEARS[0] if YEARS else '?'}"
+              f"–{YEARS[-1] if YEARS else '?'}，共 {len(YEARS)} 年）")
+        return 0
+
+    os.makedirs(OUT_DIR, exist_ok=True)
+    return main()
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(cli())

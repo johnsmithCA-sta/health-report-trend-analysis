@@ -1,0 +1,10 @@
+echo "TRIGGER_EVAL_START"
+python3 - <<'PYEOF'
+import json, os
+p = os.path.join("..", "trigger_eval.json")
+d = json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
+st, sn = d.get("should_trigger", []), d.get("should_not_trigger", [])
+print("SHOULD_TRIGGER_COUNT=%d" % len(st))
+print("SHOULD_NOT_TRIGGER_COUNT=%d" % len(sn))
+print("TRIGGER_EVAL_BALANCED=%s" % (len(st) >= 8 and len(sn) >= 4))
+PYEOF

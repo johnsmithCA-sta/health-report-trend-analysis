@@ -1,0 +1,10 @@
+{
+  "name": "报告脱敏默认开启",
+  "prompt": "验证 report_generator.py 的正文展示层脱敏默认开启（--no-mask 才关闭），防止报告正文泄露机构名/医师署名/手机号。",
+  "assertions": [
+    "MASK_SCAN_START",
+    "MASK_DEFAULT_ON=True",
+    "NO_MASK_FLAG_EXISTS=True",
+    "MASK_GUARD_IN_FUNCTION=True"
+  ]
+}

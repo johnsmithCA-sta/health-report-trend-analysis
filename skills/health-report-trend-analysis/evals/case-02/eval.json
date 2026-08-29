@@ -1,0 +1,10 @@
+{
+  "name": "隐私红线·脱敏版强隔离",
+  "prompt": "验证脱敏版与完整版分目录存放、文件名带 _anon_shareable 标记、落盘即只读 444，防止完整版被误分享。",
+  "assertions": [
+    "ANON_ISOLATION_START",
+    "ANON_DIR_ISOLATED=True",
+    "SHAREABLE_MARK=True",
+    "READONLY_444=True"
+  ]
+}

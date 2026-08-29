@@ -1,0 +1,28 @@
+{
+  "assertions": [
+    {
+      "text": "ANON_ISOLATION_START",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "ANON_DIR_ISOLATED=True",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "SHAREABLE_MARK=True",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "READONLY_444=True",
+      "pass": true,
+      "evidence": "输出包含要点"
+    }
+  ],
+  "passed": 4,
+  "total": 4,
+  "score": 1.0,
+  "mode": "heuristic-substring"
+}

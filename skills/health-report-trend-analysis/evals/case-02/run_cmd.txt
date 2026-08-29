@@ -1,0 +1,5 @@
+echo "ANON_ISOLATION_START"
+grep -q 'os.path.join(BASE, "data", "anonymized")' ../../scripts/build_dataset.py && echo "ANON_DIR_ISOLATED=True" || echo "ANON_DIR_ISOLATED=False"
+grep -q '_anon_shareable' ../../scripts/build_dataset.py && echo "SHAREABLE_MARK=True" || echo "SHAREABLE_MARK=False"
+grep -q '0o444' ../../scripts/build_dataset.py && echo "READONLY_444=True" || echo "READONLY_444=False"
+grep -n 'anonymized_dataset_anon_shareable' ../../scripts/build_dataset.py | head -3

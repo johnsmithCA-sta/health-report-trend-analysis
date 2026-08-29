@@ -9,13 +9,16 @@
     data/dataset_std.json        本地完整版（含年龄/性别，不含证件/电话/医院）
     data/anonymized_dataset.json 脱敏版（仅指标数值+年份，可安全用于云端/分享）
 """
+import argparse
 import json
 import os
 import re
+import sys
 from collections import OrderedDict
 from indicator_dict import NAME_MAP, UNIT_MAP, INDICATOR_META, CATEGORY_OVERRIDE, parse_reference, parse_numeric, is_qualitative_value
 
 BASE = os.environ.get("WORK_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_DATA_DIR = os.path.join(BASE, "data")
 RAW_PATH = os.path.join(BASE, "data", "reports_raw.json")
 STD_PATH = os.path.join(BASE, "data", "dataset_std.json")
 # 脱敏版强隔离（P2 M-1）：独立子目录 + _anon_shareable 命名标记，与完整版 dataset_std.json 分目录存放，
@@ -24,15 +27,17 @@ ANON_DIR = os.path.join(BASE, "data", "anonymized")
 ANON_PATH = os.path.join(ANON_DIR, "anonymized_dataset_anon_shareable.json")
 
 
-def _write_anon(anon_dict):
+def _write_anon(anon_dict, anon_path=None):
     """写入脱敏版：确保目录存在 + 只读权限（防止被误改/误同步为完整数据）。"""
-    os.makedirs(ANON_DIR, exist_ok=True)
-    tmp = ANON_PATH + ".tmp"
+    anon_path = anon_path or ANON_PATH
+    anon_dir = os.path.dirname(anon_path)
+    os.makedirs(anon_dir, exist_ok=True)
+    tmp = anon_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(anon_dict, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, ANON_PATH)
+    os.replace(tmp, anon_path)
     try:
-        os.chmod(ANON_PATH, 0o444)  # 只读：脱敏版为可分享产物，禁止覆盖/误改
+        os.chmod(anon_path, 0o444)  # 只读：脱敏版为可分享产物，禁止覆盖/误改
     except OSError:
         pass
 
@@ -81,8 +86,20 @@ def infer_category(std_name, section):
                 return cat
     return "其他"
 
-def build():
-    with open(RAW_PATH, encoding="utf-8") as f:
+def build(raw_path=None, std_path=None, anon_path=None, skip_verify=False, dry_run=False):
+    """构建标准化数据集。
+
+    不带任何参数调用即为整改前的行为（读取环境变量 WORK_DIR 的默认值）。
+    skip_verify=True 会跳过脱敏版自动校验（不推荐，会打印显式警告）；
+    dry_run=True 不写任何文件，但仍会对内存中的脱敏版执行同样的身份信息校验。
+    """
+    raw_path = raw_path or RAW_PATH
+    std_path = std_path or STD_PATH
+    anon_path = anon_path or ANON_PATH
+    # OCR 注入文件与 reports_raw.json 同目录（默认即 <work-dir>/data）
+    data_dir = os.path.dirname(os.path.abspath(raw_path))
+
+    with open(raw_path, encoding="utf-8") as f:
         reports = json.load(f)
 
     # 个人信息（脱敏：只保留年龄性别，用于解读；不含证件号/电话/单位/医院）
@@ -203,8 +220,12 @@ def build():
         "unrecognized_names": {k: v for k, v in unrecognized.items()},
     }
 
-    with open(STD_PATH, "w", encoding="utf-8") as f:
-        json.dump(dataset, f, ensure_ascii=False, indent=2)
+    if dry_run:
+        print(f"[dry-run] 将写入: {std_path}")
+    else:
+        os.makedirs(os.path.dirname(os.path.abspath(std_path)), exist_ok=True)
+        with open(std_path, "w", encoding="utf-8") as f:
+            json.dump(dataset, f, ensure_ascii=False, indent=2)
 
     # ---- 脱敏版：仅指标数值 ----
     anon = {
@@ -226,7 +247,7 @@ def build():
             for k, v in dataset["measurements"].items()
         },
     }
-    _write_anon(anon)
+    _write_anon_verified(anon, anon_path, skip_verify=skip_verify, dry_run=dry_run)
 
     # 统计报告
     n_series = sum(len(ind["series"]) for ind in dataset["indicators"])
@@ -237,12 +258,13 @@ def build():
         print(f"  {k} -> {v}")
     print(f"过滤脏数据: {len(skipped_dirty)}")
     print(f"基础测量: {list(dataset['measurements'].keys())}")
-    print(f"已保存: {STD_PATH}")
-    print(f"已保存(脱敏): {ANON_PATH}")
+    if not dry_run:
+        print(f"已保存: {std_path}")
+        print(f"已保存(脱敏): {anon_path}")
 
     # ---- 自动注入 OCR 数据 ----
-    _inject_ocr(dataset)
-    _inject_ocr_range(dataset, 2015, 2020)
+    _inject_ocr(dataset, data_dir)
+    _inject_ocr_range(dataset, 2015, 2020, data_dir)
     # 重新计算 years（包含 OCR 注入的年份）
     all_years = set()
     for ind in dataset["indicators"]:
@@ -255,10 +277,11 @@ def build():
                 all_years.add(m["year"])
     dataset["years"] = sorted(all_years)
     # 重新写盘（含 OCR 与更新后的 years）
-    with open(STD_PATH, "w", encoding="utf-8") as f:
-        json.dump(dataset, f, ensure_ascii=False, indent=2)
+    if not dry_run:
+        with open(std_path, "w", encoding="utf-8") as f:
+            json.dump(dataset, f, ensure_ascii=False, indent=2)
     # 脱敏版同步重建（含 OCR 注入后的数据）
-    _write_anon({
+    anon_final = {
         "anonymized": True,
         "note": "已脱敏：不含姓名、证件号、电话、地址、单位、医院等任何身份信息。",
         "years": dataset["years"],
@@ -268,13 +291,16 @@ def build():
                                   for e in i["series"]]} for i in dataset["indicators"]],
         "measurements": {k: [{"year": m["year"], "value": m["value"], "value_str": m["value_str"]} for m in v]
                          for k, v in dataset["measurements"].items()},
-    })
+    }
     # 移除 _inject_ocr 内部独立写盘（已统一）
-    print(f"\n✓ dataset_std.json 已更新（含 OCR 数据）")
+    if dry_run:
+        print(f"\n[dry-run] 将更新: {std_path}（含 OCR 数据）")
+    # 脱敏版自动校验（隐私红线）：命中身份/机构信息即报错退出，且**校验在写盘之前**
+    _write_anon_verified(anon_final, anon_path, skip_verify=skip_verify, dry_run=dry_run)
+    if not dry_run:
+        print(f"\n✓ dataset_std.json 已更新（含 OCR 数据）")
     print(f"✓ years 范围: {dataset['years']}")
-
-    # 脱敏版自动校验（P1 整改：命中身份/机构信息即报错退出）
-    verify_anonymized(ANON_PATH)
+    return 0
 
 
 # OCR 注入（确保 build_dataset 之后不会被覆盖）
@@ -309,9 +335,9 @@ PLAUSIBLE_RANGES = {
     "尿酸碱度": (4, 9), "尿比重": (1, 1.05),
 }
 
-def _inject_ocr_range(dataset, start_year, end_year):
+def _inject_ocr_range(dataset, start_year, end_year, data_dir=None):
     """将 OCR 提取的多年度指标合并入数据集"""
-    ocr_path = os.path.join(BASE, "data", "indicators_2015_2020.json")
+    ocr_path = os.path.join(data_dir or DEFAULT_DATA_DIR, "indicators_2015_2020.json")
     if not os.path.exists(ocr_path):
         return
     try:
@@ -363,9 +389,9 @@ def _inject_ocr_range(dataset, start_year, end_year):
                 print(f"[OCR 注入 {year}] 拒绝 {len(rejected)} 项: {[(k, r) for k, r in rejected[:3]]}")
     return total_accepted, total_rejected
 
-def _inject_ocr(dataset):
+def _inject_ocr(dataset, data_dir=None):
     """向后兼容：注入 2022 年 OCR 数据"""
-    ocr_path = os.path.join(BASE, "data", "indicators_2022.json")
+    ocr_path = os.path.join(data_dir or DEFAULT_DATA_DIR, "indicators_2022.json")
     if not os.path.exists(ocr_path):
         return
     try:
@@ -420,18 +446,105 @@ IDENTITY_PATTERNS = [
 ]
 
 
+def scan_identity(text):
+    """扫描文本中是否含身份/机构信息，返回命中的标签列表（空列表=通过）。"""
+    return [label for label, pattern in IDENTITY_PATTERNS if pattern.search(text)]
+
+
 def verify_anonymized(path):
     """校验脱敏版数据不含身份/机构信息，命中即报错退出。"""
     with open(path, encoding="utf-8") as f:
         text = f.read()
-    problems = []
-    for label, pattern in IDENTITY_PATTERNS:
-        if pattern.search(text):
-            problems.append(label)
+    problems = scan_identity(text)
     if problems:
         raise SystemExit(f"[FAIL] 脱敏版仍含疑似身份/机构信息: {', '.join(problems)}，请检查脱敏逻辑后重试")
     print("✓ 脱敏版自动校验通过：未发现手机号/身份证号/邮箱/医院名称等身份信息")
 
 
+def verify_anonymized_obj(anon_dict, suffix=""):
+    """内存中校验脱敏数据（落盘前校验的唯一入口，规则与落盘版完全一致）。
+
+    suffix: 附加在通过日志里的说明（如 "（dry-run，未写盘）"）。
+    """
+    problems = scan_identity(json.dumps(anon_dict, ensure_ascii=False))
+    if problems:
+        raise SystemExit(f"[FAIL] 脱敏版仍含疑似身份/机构信息: {', '.join(problems)}，请检查脱敏逻辑后重试")
+    print(f"✓ 脱敏版自动校验通过：未发现手机号/身份证号/邮箱/医院名称等身份信息{suffix}")
+
+
+def _write_anon_verified(anon, anon_path, skip_verify=False, dry_run=False):
+    """脱敏版落盘的**唯一**出口：先内存校验，通过后才写盘。
+
+    为什么必须「先校验、后写盘」：脱敏版落盘后即置只读 444。若校验发生在写盘之后，
+    一旦命中身份信息，那份带 PII 的文件已经留在磁盘上且改不动，[FAIL] 只是事后告警，
+    隐私红线等于没守住。本技能处理的是医疗数据，零容忍，校验必须前置。
+    """
+    if skip_verify:
+        print("[警告] --skip-verify 已指定：本次跳过脱敏版自动校验，脱敏结果未经校验，请勿直接分享")
+    elif dry_run:
+        verify_anonymized_obj(anon, "（dry-run，未写盘）")
+    else:
+        verify_anonymized_obj(anon)
+
+    if dry_run:
+        print(f"[dry-run] 将写入(脱敏): {anon_path}")
+        return
+    _write_anon(anon, anon_path)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="build_dataset.py",
+        description="标准化数据集构建器：将 reports_raw.json 归一化为标准指标数据集，"
+                    "并生成独立子目录下的脱敏版（默认强制做脱敏校验）。",
+        epilog="""
+示例:
+  python3 scripts/build_dataset.py
+  python3 scripts/build_dataset.py --work-dir /path/to/work
+  python3 scripts/build_dataset.py --data-dir ./data --out /tmp/dataset_std.json
+  python3 scripts/build_dataset.py --dry-run
+
+参数优先级: 命令行参数 > 环境变量（WORK_DIR）> 代码默认值（技能根目录）。
+注意: --out 只覆盖完整版路径，脱敏版固定写到 --out 所在目录的 anonymized/ 子目录，保持与完整版分目录隔离。
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--work-dir", default=None,
+                        help="工作目录（默认 $WORK_DIR，未设置则为技能根目录）；其下的 data/ 存放输入与产物")
+    parser.add_argument("--data-dir", default=None,
+                        help="数据目录（默认 <work-dir>/data），读取 reports_raw.json 并写入产物")
+    parser.add_argument("--out", default=None,
+                        help="完整版 dataset_std.json 的输出路径（默认 <data-dir>/dataset_std.json）")
+    parser.add_argument("--skip-verify", action="store_true",
+                        help="跳过脱敏版自动校验（默认不跳过；跳过会打印警告，产物未经校验请勿分享）")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="只打印将要写入的文件，不写任何文件；脱敏校验仍在内存中执行")
+    return parser
+
+
+def cli(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    base = args.work_dir or BASE
+    if args.work_dir is not None and not os.path.isdir(args.work_dir):
+        parser.error(f"--work-dir 不是有效目录: {args.work_dir}")
+    data_dir = args.data_dir or os.path.join(base, "data")
+    if args.data_dir is not None and not os.path.isdir(args.data_dir):
+        parser.error(f"--data-dir 不是有效目录: {args.data_dir}")
+    std_path = args.out or os.path.join(data_dir, "dataset_std.json")
+    anon_path = os.path.join(os.path.dirname(os.path.abspath(std_path)),
+                             "anonymized", "anonymized_dataset_anon_shareable.json")
+    raw_path = os.path.join(data_dir, "reports_raw.json")
+    if not os.path.isfile(raw_path):
+        print(f"[错误] 未找到输入文件: {raw_path}（请先运行 parse_reports.py，或用 --data-dir 指定）")
+        return 1
+    try:
+        return build(raw_path=raw_path, std_path=std_path, anon_path=anon_path,
+                     skip_verify=args.skip_verify, dry_run=args.dry_run)
+    except (OSError, ValueError) as exc:
+        print(f"[错误] 构建失败: {exc}")
+        return 1
+
+
 if __name__ == "__main__":
-    build()
+    sys.exit(cli())

@@ -1,0 +1,31 @@
+echo "NEWYEAR_START"
+export FIXTURE=$(mktemp -d); mkdir -p "$FIXTURE/data"
+python3 - <<'PYEOF'
+import json, os
+d = os.path.join(os.environ["FIXTURE"], "data")
+json.dump({"years": [2023, 2024],
+  "indicators": [{"key": "总胆固醇", "unit": "mmol/L", "display": "总胆固醇",
+     "series": [{"year": 2023, "value": 4.5, "is_qualitative": False,
+                 "ref": {"lo": 3.10, "hi": 5.20}}]}],
+  "measurements": {}},
+  open(os.path.join(d, "dataset_std.json"), "w"), ensure_ascii=False)
+L = lambda t, y, x: [t, x, y, x + len(t) * 6, y + 12]
+json.dump([{"page": 1, "lines": [L("总胆固醇", 100, 10), L("5.10", 100, 70),
+                                L("mmol/L", 100, 110), L("3.10-5.20", 100, 160)]}],
+          open(os.path.join(d, "ocr_2027.json"), "w"), ensure_ascii=False)
+print("FIXTURE_READY=True")
+PYEOF
+WORK_DIR="$FIXTURE" python3 ../../scripts/extract.py --year 2027 --quiet
+echo "EXTRACT_NEW_YEAR_EXIT=$?"
+python3 - <<'PYEOF'
+import json, os
+p = os.path.join(os.environ["FIXTURE"], "data", "indicators_2027.json")
+if os.path.exists(p):
+    d = json.load(open(p))
+    print("NEW_YEAR_NO_CODE_CHANGE=OK")
+    print("EXTRACTED_ITEMS=%d" % len(d))
+    print("MATCHED_KEY=%s" % d[0]["key"])
+else:
+    print("NEW_YEAR_NO_CODE_CHANGE=FAIL")
+PYEOF
+rm -rf "$FIXTURE"

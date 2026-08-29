@@ -1,0 +1,9 @@
+{
+  "name": "隐私红线·脱敏校验先于写盘",
+  "prompt": "验证脱敏校验发生在写盘之前：脱敏版落盘即只读 444，若校验在写盘之后，命中身份信息时带 PII 的文件已留在磁盘上，[FAIL] 只是事后告警。",
+  "assertions": [
+    "VERIFY_GUARD_START",
+    "GUARD_FUNCTION_PRESENT=True",
+    "WRITE_CALLS_OUTSIDE_GUARD=0"
+  ]
+}

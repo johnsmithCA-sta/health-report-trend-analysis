@@ -18,7 +18,7 @@ req.setRecognitionLanguages_(["zh-Hans"])
 ### 策略 1：英文缩写直接映射（照片版，2015–2020）
 
 照片版报告项目名乱码，但化验单常带英文缩写（ALT/AST/TP/ALB 等）：
-- 维护 `ABBR_MAP`：`"ALT": "丙氨酸氨基转移酶(ALT)"`、`"TP": "总蛋白"`、`"HDL-C": "高密度脂蛋白胆固醇"` 等（见 `extract_2015_2020.py` 顶部）
+- 维护 `ABBR_MAP`：`"ALT": "丙氨酸氨基转移酶(ALT)"`、`"TP": "总蛋白"`、`"HDL-C": "高密度脂蛋白胆固醇"` 等（见 `extract.py` 顶部 `ABBR_MAP`）
 - 命中缩写后，在 y 邻近 ±3 行内找数值/参考范围/单位
 - 注意：缩写可能误命中其他行（如 `K` 命中年份"2015"），必须用 PLAUSIBLE_RANGES 校验
 

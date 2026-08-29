@@ -8,6 +8,7 @@
 
 权威解读来源原则：默沙东诊疗手册（MSD Manual）、丁香医生、中国临床指南。
 """
+import os
 import re
 
 # ============ 名称归一化映射 ============
@@ -704,3 +705,213 @@ def is_qualitative_value(value):
     if isinstance(value, (int, float)):
         return False
     return not bool(re.match(r'^[-+]?\d*\.?\d+$', str(value).strip()))
+
+
+# ============ CLI 自解释 / 自检入口 ============
+# 本模块被 build_dataset.py / trend_analysis.py 等脚本 import，
+# 以下 CLI 逻辑只在 `python3 scripts/indicator_dict.py ...` 直接运行时执行；
+# 被 import 时不产生任何输出、不读取任何文件。
+
+def all_indicators():
+    """标准指标全集：CATEGORY_OVERRIDE 提供分类/单位，INDICATOR_META 提供解读且优先级更高。
+
+    返回 {标准指标名: {"category": str, "unit": str, "display": str, "has_meta": bool}}
+    """
+    items = {}
+    for name, info in CATEGORY_OVERRIDE.items():
+        category, unit = info
+        items[name] = {"category": category, "unit": unit, "display": name, "has_meta": False}
+    for name, meta in INDICATOR_META.items():
+        items[name] = {
+            "category": meta.get("category", ""),
+            "unit": meta.get("unit", ""),
+            "display": meta.get("display", name),
+            "has_meta": True,
+        }
+    return items
+
+def aliases_of(name):
+    """标准指标名对应的全部原始名（别名），升序返回"""
+    return sorted(k for k, v in NAME_MAP.items() if v == name)
+
+def iter_names(category=None, keyword=None):
+    """按分类/关键词过滤标准指标，产出 (标准名, info, 命中的别名列表)"""
+    items = all_indicators()
+    kw = (keyword or "").strip().lower()
+    for name in sorted(items):
+        info = items[name]
+        if category and info["category"] != category:
+            continue
+        alias_list = aliases_of(name)
+        if kw:
+            hit = (kw in name.lower() or kw in info["display"].lower()
+                   or any(kw in a.lower() for a in alias_list))
+            if not hit:
+                continue
+            matched = [a for a in alias_list if kw in a.lower()]
+        else:
+            matched = []
+        yield name, info, matched
+
+def categories():
+    """全部已登记的分类名（升序）"""
+    return sorted({info["category"] for info in all_indicators().values() if info["category"]})
+
+def _duplicate_keys(src_path, var_names=("NAME_MAP", "UNIT_MAP", "INDICATOR_META", "CATEGORY_OVERRIDE")):
+    """用 AST 扫描源码字典字面量，找出重复键（dict 字面量重复键会被后者静默覆盖）"""
+    import ast
+    with open(src_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), src_path)
+    dups = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for tgt in node.targets:
+            if isinstance(tgt, ast.Name) and tgt.id in var_names and isinstance(node.value, ast.Dict):
+                seen = {}
+                for key_node in node.value.keys:
+                    try:
+                        key = ast.literal_eval(key_node)
+                    except (ValueError, SyntaxError, TypeError):
+                        continue
+                    seen[key] = seen.get(key, 0) + 1
+                for key, cnt in seen.items():
+                    if cnt > 1:
+                        dups.append((tgt.id, key, cnt))
+    return dups
+
+def validate_dict():
+    """自检字典完整性，返回 (errors, warnings, infos)"""
+    errors, warns, infos = [], [], []
+    items = all_indicators()
+
+    # 1) 重复键（源码层面；运行期 dict 已无法察觉）
+    for var, key, cnt in _duplicate_keys(os.path.abspath(__file__)):
+        errors.append(f"{var} 存在重复键 {key!r}（{cnt} 次，后者静默覆盖前者）")
+
+    # 2) 分类 / 单位 / 展示名缺失
+    for name, info in sorted(items.items()):
+        if not info["category"]:
+            errors.append(f"指标 {name} 缺少 category")
+        if info["unit"] == "":
+            warns.append(f"指标 {name} 单位为空（定性指标属正常，其余建议补齐）")
+        if not info["display"]:
+            errors.append(f"指标 {name} 缺少 display")
+
+    # 3) 别名悬空：NAME_MAP 指向的标准名未登记
+    for raw, std in sorted(NAME_MAP.items()):
+        if std not in items:
+            errors.append(f"NAME_MAP {raw!r} → 标准名 {std!r} 未登记（INDICATOR_META / CATEGORY_OVERRIDE 均无）")
+
+    # 4) display 重复（报告表格中会撞名）
+    seen_display = {}
+    for name, info in sorted(items.items()):
+        seen_display.setdefault(info["display"], []).append(name)
+    for disp, names in sorted(seen_display.items()):
+        if len(names) > 1:
+            errors.append(f"display {disp!r} 重复，对应标准名: {'、'.join(names)}")
+
+    # 5) 参考范围格式：本字典不存储参考范围（以当年报告正文为准），改为自检解析函数
+    cases = [("3.50-9.50", (3.5, 9.5, False)), ("<1", (None, 1.0, False)),
+             (">5", (5.0, None, False)), ("阴性", (None, None, True)),
+             ("", (None, None, False))]
+    for text, expect in cases:
+        got = parse_reference(text)
+        if (got["lo"], got["hi"], got["qualitative"]) != expect:
+            errors.append(f"parse_reference({text!r}) 返回 {got}，期望 lo/hi/qualitative={expect}")
+    infos.append("字典不存储参考范围（以当年报告正文为准），故仅对 parse_reference() 做行为自检")
+
+    return errors, warns, infos
+
+def build_parser():
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="indicator_dict.py",
+        description="统一指标字典：查询标准指标与别名，或自检字典完整性",
+        epilog="""
+示例:
+  python3 scripts/indicator_dict.py --count                  # 只打印标准指标总数
+  python3 scripts/indicator_dict.py --list --category 血脂     # 列出血脂类全部指标
+  python3 scripts/indicator_dict.py --search 胆红素            # 模糊检索标准名/展示名/原始名
+  python3 scripts/indicator_dict.py --validate                # 自检字典完整性（重复键/单位缺失/别名悬空）
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--list", action="store_true",
+                       help="列出全部标准指标名（含分类、标准单位、展示名）")
+    group.add_argument("--search", metavar="关键词",
+                       help="模糊检索：匹配标准名、展示名与 NAME_MAP 原始名（别名）")
+    group.add_argument("--count", action="store_true",
+                       help="只打印标准指标总数（INDICATOR_META 与 CATEGORY_OVERRIDE 的并集）")
+    group.add_argument("--validate", action="store_true",
+                       help="自检字典完整性：重复键、分类/单位/展示名缺失、别名悬空、参考范围解析")
+    parser.add_argument("--category", metavar="分类",
+                        help="按分类过滤，仅与 --list / --search 配合使用")
+    return parser
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.category and args.category not in categories():
+        parser.error(f"--category 取值非法: {args.category}（可用分类: {'、'.join(categories())}）")
+    if args.category and not (args.list or args.search):
+        parser.error("--category 需要与 --list 或 --search 一起使用")
+
+    items = all_indicators()
+    n_meta = len(INDICATOR_META)
+    n_ovr = len(CATEGORY_OVERRIDE)
+    n_overlap = sum(1 for k in CATEGORY_OVERRIDE if k in INDICATOR_META)
+    total = len(items)
+
+    if args.count:
+        print(total)
+        return 0
+
+    if args.list:
+        n = 0
+        for name, info, _ in iter_names(category=args.category):
+            n += 1
+            print(f"{name}\t{info['category']}\t{info['unit']}\t{info['display']}")
+        suffix = f"（分类过滤: {args.category}）" if args.category else ""
+        print(f"[信息] 共 {n} 项{suffix}")
+        return 0
+
+    if args.search:
+        n = 0
+        for name, info, matched in iter_names(category=args.category, keyword=args.search):
+            n += 1
+            alias_txt = f"\t别名: {'、'.join(matched[:5])}" if matched else ""
+            print(f"{name}\t{info['category']}\t{info['unit']}\t{info['display']}{alias_txt}")
+        if n == 0:
+            print(f"[信息] 未匹配到含“{args.search}”的指标")
+        else:
+            print(f"[信息] 命中 {n} 项")
+        return 0
+
+    if args.validate:
+        print(f"[信息] 标准指标总数 {total} = INDICATOR_META {n_meta} + CATEGORY_OVERRIDE {n_ovr} - 重叠 {n_overlap}")
+        print(f"[信息] 别名映射 {len(NAME_MAP)} 条，单位映射 {len(UNIT_MAP)} 条")
+        errors, warns, infos = validate_dict()
+        for line in infos:
+            print(f"[信息] {line}")
+        for line in warns:
+            print(f"[警告] {line}")
+        for line in errors:
+            print(f"[错误] {line}")
+        if errors:
+            print(f"[错误] 自检未通过：{len(errors)} 处问题（{len(warns)} 条警告）")
+            return 1
+        print(f"[完成] 字典自检通过（{len(warns)} 条警告，0 错误）")
+        return 0
+
+    # 无参数运行：仅打印摘要（原脚本无 main，直接运行无任何输出，此处只多几行日志）
+    print(f"[信息] 标准指标 {total} 项（含详细解读 {n_meta} 项），别名映射 {len(NAME_MAP)} 条")
+    print(f"[信息] 分类: {'、'.join(categories())}")
+    print("[信息] 用法：--list 列出 | --search 关键词 检索 | --count 总数 | --validate 自检 | --help 全部参数")
+    return 0
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

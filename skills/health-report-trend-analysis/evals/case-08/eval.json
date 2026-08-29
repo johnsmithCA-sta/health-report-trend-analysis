@@ -1,0 +1,10 @@
+{
+  "name": "触发评估集·正负样本齐备",
+  "prompt": "验证触发评估集同时含应触发与不应触发样本——只标正样本会让技能被泛化触发，只标负样本会改得谁都叫不动。",
+  "assertions": [
+    "TRIGGER_EVAL_START",
+    "SHOULD_TRIGGER_COUNT",
+    "SHOULD_NOT_TRIGGER_COUNT",
+    "TRIGGER_EVAL_BALANCED=True"
+  ]
+}

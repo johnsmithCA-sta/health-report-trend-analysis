@@ -1,0 +1,4 @@
+echo "PRIVACY_SCAN_START"
+HITS=$(grep -nE "^[[:space:]]*(import|from)[[:space:]]+(requests|urllib|urllib2|urllib3|httplib|http|socket|ftplib|smtplib|boto3|paramiko|aiohttp)" ../../scripts/*.py | wc -l | tr -d ' ')
+echo "NETWORK_IMPORT_HITS=$HITS"
+if [ "$HITS" -eq 0 ]; then echo "NO_NETWORK_IMPORT_FOUND"; else echo "NETWORK_IMPORT_LEAK"; grep -nE "^[[:space:]]*(import|from)[[:space:]]+(requests|urllib|urllib2|urllib3|httplib|http|socket|ftplib|smtplib|boto3|paramiko|aiohttp)" ../../scripts/*.py; fi
