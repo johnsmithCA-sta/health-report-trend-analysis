@@ -1,0 +1,11 @@
+echo "MASK_SCAN_START"
+grep -q '^MASK_ENABLED = True' ../../scripts/report_generator.py && echo "MASK_DEFAULT_ON=True" || echo "MASK_DEFAULT_ON=False"
+grep -q -- '--no-mask' ../../scripts/report_generator.py && echo "NO_MASK_FLAG_EXISTS=True" || echo "NO_MASK_FLAG_EXISTS=False"
+python3 - <<'PYEOF'
+import re
+src = open("../../scripts/report_generator.py", encoding="utf-8").read()
+m = re.search(r"def mask_identity_text\(text\):(.*?)\n\ndef ", src, re.S)
+body = m.group(1) if m else ""
+print("MASK_GUARD_IN_FUNCTION=%s" % ("if not MASK_ENABLED" in body))
+print("MASK_PATTERNS=%d" % len(re.findall(r"re\.sub", body)))
+PYEOF

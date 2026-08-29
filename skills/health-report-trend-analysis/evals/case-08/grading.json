@@ -1,0 +1,28 @@
+{
+  "assertions": [
+    {
+      "text": "TRIGGER_EVAL_START",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "SHOULD_TRIGGER_COUNT",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "SHOULD_NOT_TRIGGER_COUNT",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "TRIGGER_EVAL_BALANCED=True",
+      "pass": true,
+      "evidence": "输出包含要点"
+    }
+  ],
+  "passed": 4,
+  "total": 4,
+  "score": 1.0,
+  "mode": "heuristic-substring"
+}

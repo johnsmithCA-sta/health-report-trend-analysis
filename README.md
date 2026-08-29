@@ -2,17 +2,21 @@
 
 体检指标趋势分析系统：把多年度、多形态的体检报告统一解析为标准化指标时间序列，产出趋势分析报告 + 交互式健康管理工作台。全程本地处理、自动脱敏、动态扩展。
 
-> 让历年"吃灰的体检报告"变成可追踪的健康趋势 —— 电子 PDF / 扫描件 / 照片三种形态统一解析，116 项指标逐年比对，异常变化一目了然。
+> 让历年"吃灰的体检报告"变成可追踪的健康趋势 —— 电子 PDF / 扫描件 / 照片三种形态统一解析，114 项指标逐年比对，异常变化一目了然。
 
 ## ✨ 功能特性
 
 - **3 种输入形态**：电子版 PDF（文本层）、扫描件 PDF（无文本层）、照片 JPG（自动合成 PDF）
-- **统一指标字典**：146 个原始指标名归一化到 116 个标准指标，跨年份/跨医院统一表达
+- **统一指标字典**：148 个原始指标名归一化到 114 个标准指标，跨年份/跨医院统一表达
 - **历年趋势比对**：异常判定（当年报告自带参考范围）、显著变化（≥20% 或≥参考宽度 30%）、趋好/趋坏标注
 - **权威医学解读**：默沙东诊疗手册 / 丁香医生 / 中国临床指南，分层建议（生活方式/饮食/运动/就医指征）
 - **双交付物**：结构化 Markdown 报告 + 离线 HTML 工作台（SVG 折线图+参考范围带，无外部依赖）
 - **隐私保护**：全程本地处理，自动生成脱敏数据集（仅指标数值+年份）
 - **动态扩展**：新增年度报告重跑流水线即可，趋势聚焦近三年（可配置）
+- **全脚本自解释**：10 个脚本全部支持 `--help`，统一三态退出码（0 成功 / 1 运行期失败 / 2 参数错误）
+- **依赖自检**：`check_deps.py` 一键体检缺什么、影响哪几个脚本、怎么装
+- **参数化 OCR 提取**：`extract.py --year` 按年份提取，新增年份报告零改码接入
+- **自动化回归评测**：8 条评测用例（含 3 条隐私防线），`eval_loop.py` 一键回归
 
 ## 🔍 差异化说明 / Why This Project
 
@@ -37,12 +41,16 @@ export REPORT_DIR=/path/to/体检报告目录      # 报告存放目录
 export WORK_DIR=/path/to/工作数据目录        # 数据产物目录
 export PY=python3                            # 建议用带依赖的 python
 
-# 2. 解析（按输入形态选对应脚本）
-$PY scripts/parse_reports.py                 # 电子版 PDF
-$PY scripts/make_year_pdfs.py                # 照片 JPG → 合成 PDF（可选）
-$PY scripts/extract_2022.py                  # 扫描件 OCR 提取（可选）
+# 2. 依赖自检（建议每次先跑）
+$PY scripts/check_deps.py                    # 缺什么、影响哪几个脚本、怎么装
 
-# 3. 归一化 + 趋势 + 交付
+# 3. 解析（按输入形态选对应脚本）
+$PY scripts/parse_reports.py                 # 电子版 PDF
+$PY scripts/make_year_pdfs.py --year <年份>   # 照片 JPG → 合成 PDF（可选）
+$PY scripts/vision_ocr.py <PDF> data/ocr_<年份>.json   # 扫描件/照片 OCR（可选）
+$PY scripts/extract.py --year <年份>          # OCR 结果 → 指标（可选，零改码接入新年份）
+
+# 4. 归一化 + 趋势 + 交付
 $PY scripts/build_dataset.py
 $PY scripts/trend_analysis.py
 $PY scripts/report_generator.py
@@ -56,8 +64,9 @@ health-report-trend-analysis/
 ├── skills/
 │   └── health-report-trend-analysis/   # Agent Skills 规范（agentskills.io）
 │       ├── SKILL.md                    # 技能行为规范
-│       ├── scripts/                    # 可执行脚本（10 个）
-│       └── references/                 # 解析口径 / OCR 方法学 / 新报告接入 / 降本纪律
+│       ├── scripts/                    # 可执行脚本（10 个，全参数化）
+│       ├── references/                 # 解析口径 / OCR 方法学 / 新报告接入指南
+│       └── evals/                      # 8 条自动化回归评测（含隐私防线用例）
 ├── README.md
 ├── LICENSE
 └── CONTRIBUTING.md

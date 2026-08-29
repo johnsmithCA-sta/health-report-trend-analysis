@@ -1,0 +1,33 @@
+{
+  "assertions": [
+    {
+      "text": "NEWYEAR_START",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "FIXTURE_READY=True",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "EXTRACT_NEW_YEAR_EXIT=0",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "NEW_YEAR_NO_CODE_CHANGE=OK",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "MATCHED_KEY=总胆固醇",
+      "pass": true,
+      "evidence": "输出包含要点"
+    }
+  ],
+  "passed": 5,
+  "total": 5,
+  "score": 1.0,
+  "mode": "heuristic-substring"
+}

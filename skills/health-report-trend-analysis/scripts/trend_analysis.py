@@ -7,14 +7,17 @@
 - 连续多年趋势判定（持续上升/持续下降/先升后降/波动等）
 - 输出 data/trend_analysis.json
 """
+import argparse
 import json
 import os
+import sys
 from collections import OrderedDict
 from indicator_dict import INDICATOR_META
 
 BASE = os.environ.get("WORK_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STD_PATH = os.path.join(BASE, "data", "dataset_std.json")
-OUT_PATH = os.path.join(BASE, "data", "trend_analysis.json")
+DEFAULT_DATA_DIR = os.path.join(BASE, "data")
+STD_PATH = os.path.join(DEFAULT_DATA_DIR, "dataset_std.json")
+OUT_PATH = os.path.join(DEFAULT_DATA_DIR, "trend_analysis.json")
 
 # 趋势聚焦年份（仅判断这几年的整体趋势）
 TREND_FOCUS_YEARS = [2024, 2025, 2026]
@@ -133,8 +136,16 @@ def direction_text(v1, v2):
         return "下降"
     return "持平"
 
-def analyze():
-    with open(STD_PATH, encoding="utf-8") as f:
+def analyze(std_path=None, out_path=None, focus_years=None, dry_run=False):
+    """执行趋势分析并写出 trend_analysis.json。
+
+    不带任何参数调用即为整改前的行为（读取环境变量 WORK_DIR 的默认值）。
+    focus_years 覆盖模块级 TREND_FOCUS_YEARS；dry_run=True 只计算不写文件。
+    """
+    std_path = std_path or STD_PATH
+    out_path = out_path or OUT_PATH
+    focus_years = list(focus_years) if focus_years else TREND_FOCUS_YEARS
+    with open(std_path, encoding="utf-8") as f:
         ds = json.load(f)
 
     years = ds["years"]
@@ -195,7 +206,7 @@ def analyze():
                 "good_direction": judge_change_good(ind["key"], pct),
             })
         # 趋势判定（仅基于 TREND_FOCUS_YEARS）
-        focus_points = [p for p in points if p["year"] in TREND_FOCUS_YEARS]
+        focus_points = [p for p in points if p["year"] in focus_years]
         focus_values = [p["value"] for p in focus_points]
         focus_diffs = [focus_values[i+1] - focus_values[i] for i in range(len(focus_values)-1)]
         if len(focus_diffs) >= 2:
@@ -287,8 +298,13 @@ def analyze():
         "收缩压": {"lo": 90, "hi": 139},
         "舒张压": {"lo": 60, "hi": 89},
     }
-    measurement_items = []
+    # 不重置 measurement_items：上方 indicators 循环里已把 体重/身高/BMI/收缩压/舒张压
+    # 这类「也可能出现在化验表中」的项追加进来，直接清空会静默丢数据。
+    # 改为按 key 去重——measurements 中的同名项优先（带 meas_ref 参考范围，判定更准）。
+    seen_meas_keys = {it["key"] for it in measurement_items}
     for k in meas_keys:
+        if k in seen_meas_keys:
+            continue
         series = ds["measurements"].get(k, [])
         series = [e for e in series if e.get("value") is not None]
         if len(series) < 2:
@@ -370,7 +386,7 @@ def analyze():
             "trend_rule": "≥2个相邻变化同向为持续升/降；先升后降/先降后升；否则波动",
             "missing_rule": "缺失年份在missing_years中标注，不参与计算",
             "good_rule": "基于指标方向性（INVERSE/POSITIVE）和首末状态判定 趋好/趋坏/中性/复杂",
-            "trend_focus": f"整体趋势与首末对比仅基于{TREND_FOCUS_YEARS[0]}–{TREND_FOCUS_YEARS[-1]}，历史数据用于图表展示",
+            "trend_focus": f"整体趋势与首末对比仅基于{focus_years[0]}–{focus_years[-1]}，历史数据用于图表展示",
         },
         "indicators": trend_items,
         "measurements": measurement_items,
@@ -382,9 +398,13 @@ def analyze():
             "bad_count": sum(1 for it in trend_items if it.get("good_direction") == "趋坏"),
         },
     }
-    with open(OUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-    print(f"已保存: {OUT_PATH}")
+    if dry_run:
+        print(f"[dry-run] 将写入: {out_path}（{result['stats']['total_indicators']} 项指标，本次不写盘）")
+    else:
+        os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        print(f"已保存: {out_path}")
     print(f"指标总数: {result['stats']['total_indicators']} (化验 {len(trend_items)} + 测量 {len(measurement_items)})")
     print(f"有异常: {result['stats']['abnormal_count']}, 有显著变化: {result['stats']['significant_count']}")
     print(f"趋好: {result['stats']['good_count']}, 趋坏: {result['stats']['bad_count']}")
@@ -396,5 +416,74 @@ def analyze():
         print(f"  [{it['category']}] {it['key']}: {st} | {it['trend']} | {it.get('good_direction','-')}")
     return result
 
+def _focus_years(value):
+    """--focus-years 解析：逗号分隔年份，支持乱序与重复，范围 1990-2100。"""
+    try:
+        years = sorted({int(y) for y in value.split(",") if y.strip()})
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"--focus-years 需为逗号分隔的年份，如 2024,2025,2026；收到: {value}")
+    if not years:
+        raise argparse.ArgumentTypeError("--focus-years 不能为空")
+    for y in years:
+        if not (1990 <= y <= 2100):
+            raise argparse.ArgumentTypeError(
+                f"--focus-years 的年份需在 1990-2100 之间；收到: {y}")
+    return years
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="trend_analysis.py",
+        description="趋势比对分析器：基于标准化数据集判定逐年是否超出参考范围、"
+                    "相邻年显著变化与整体趋势（趋好/趋坏），输出 trend_analysis.json。",
+        epilog="""
+示例:
+  python3 scripts/trend_analysis.py
+  python3 scripts/trend_analysis.py --work-dir /path/to/work
+  python3 scripts/trend_analysis.py --focus-years 2020,2022,2025 --dry-run
+  python3 scripts/trend_analysis.py --data-dir ./data --out /tmp/trend_analysis.json
+
+参数优先级: 命令行参数 > 环境变量（WORK_DIR）> 代码默认值（技能根目录）。
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--work-dir", default=None,
+                        help="工作目录（默认 $WORK_DIR，未设置则为技能根目录）；其下的 data/ 存放输入与产物")
+    parser.add_argument("--data-dir", default=None,
+                        help="数据目录（默认 <work-dir>/data），读取 dataset_std.json 并写入产物")
+    parser.add_argument("--focus-years", type=_focus_years, default=list(TREND_FOCUS_YEARS),
+                        help=f"趋势聚焦年份，逗号分隔（默认 {','.join(str(y) for y in TREND_FOCUS_YEARS)}）；"
+                             "整体趋势与首末对比只基于这些年")
+    parser.add_argument("--out", default=None,
+                        help="输出 JSON 文件路径（默认 <data-dir>/trend_analysis.json）")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="只打印将要写入的文件与统计结果，不写文件")
+    return parser
+
+
+def cli(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    base = args.work_dir or BASE
+    if args.work_dir is not None and not os.path.isdir(args.work_dir):
+        parser.error(f"--work-dir 不是有效目录: {args.work_dir}")
+    data_dir = args.data_dir or os.path.join(base, "data")
+    if args.data_dir is not None and not os.path.isdir(args.data_dir):
+        parser.error(f"--data-dir 不是有效目录: {args.data_dir}")
+    std_path = os.path.join(data_dir, "dataset_std.json")
+    out_path = args.out or os.path.join(data_dir, "trend_analysis.json")
+    if not os.path.isfile(std_path):
+        print(f"[错误] 未找到输入文件: {std_path}（请先运行 build_dataset.py，或用 --data-dir 指定）")
+        return 1
+    try:
+        analyze(std_path=std_path, out_path=out_path,
+                focus_years=args.focus_years, dry_run=args.dry_run)
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"[错误] 分析失败: {exc}")
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
-    analyze()
+    sys.exit(cli())

@@ -1,0 +1,23 @@
+{
+  "assertions": [
+    {
+      "text": "PRIVACY_SCAN_START",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "NO_NETWORK_IMPORT_FOUND",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "NETWORK_IMPORT_HITS=0",
+      "pass": true,
+      "evidence": "输出包含要点"
+    }
+  ],
+  "passed": 3,
+  "total": 3,
+  "score": 1.0,
+  "mode": "heuristic-substring"
+}

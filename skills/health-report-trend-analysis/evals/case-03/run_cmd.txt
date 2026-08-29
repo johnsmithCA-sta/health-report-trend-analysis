@@ -1,0 +1,14 @@
+echo "VERIFY_GUARD_START"
+python3 - <<'PYEOF'
+import re
+src = open("../../scripts/build_dataset.py", encoding="utf-8").read()
+# (?<!def ) 排除函数定义本身，只统计真实调用
+calls = [m.start() for m in re.finditer(r"(?<!def )_write_anon\(", src)]
+guard = src.find("def _write_anon_verified")
+outside = [c for c in calls if guard == -1 or c < guard]
+print("GUARD_FUNCTION_PRESENT=%s" % (guard != -1))
+print("WRITE_CALLS_TOTAL=%d" % len(calls))
+print("WRITE_CALLS_OUTSIDE_GUARD=%d" % len(outside))
+print("VERIFIED_ENTRY_CALLS=%d" % len(re.findall(r"_write_anon_verified\(", src)))
+print("VERIFY_CALLS=%d" % len(re.findall(r"verify_anonymized_obj\(", src)))
+PYEOF

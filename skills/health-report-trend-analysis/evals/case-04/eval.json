@@ -1,0 +1,10 @@
+{
+  "name": "依赖自检可用",
+  "prompt": "验证 check_deps.py 能一键体检依赖，输出缺什么、影响哪几个脚本、怎么装。",
+  "assertions": [
+    "DEPS_CHECK_START",
+    "missing_required",
+    "indicator_dict.py",
+    "DEPS_JSON_PARSED=True"
+  ]
+}

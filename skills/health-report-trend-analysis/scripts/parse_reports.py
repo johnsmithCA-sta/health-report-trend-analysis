@@ -8,16 +8,19 @@
 - 医生小结: 本次体检汇总
 输出结构化 JSON
 """
-import pymupdf
+import argparse
 import json
 import re
 import os
+import sys
 from collections import defaultdict
 
 # 环境变量可配置（技能化支持）：REPORT_DIR 报告目录 / DATA_DIR 数据输出目录
-REPORT_DIR = os.environ.get("REPORT_DIR", "体检报告")  # 可配：REPORT_DIR 指向报告目录
-OUT_DIR = os.environ.get("DATA_DIR", "data")  # 可配：DATA_DIR 指向数据输出目录
-os.makedirs(OUT_DIR, exist_ok=True)
+DEFAULT_REPORT_DIR = os.environ.get("REPORT_DIR", "体检报告")
+DEFAULT_DATA_DIR = os.environ.get("DATA_DIR", "data")
+# 保留旧全局名，供既有调用方 import 使用
+REPORT_DIR = DEFAULT_REPORT_DIR
+OUT_DIR = DEFAULT_DATA_DIR
 
 # 页眉页脚噪声词
 NOISE = ["美好人生", "体检号", "姓名", "日期", "审核日期", "检验者", "初检医师", "终检医师",
@@ -199,6 +202,8 @@ def extract_summary(doc):
     return summary, suggestions
 
 def parse_report(pdf_path, report_id, year):
+    # 延迟导入：pymupdf 为可选依赖，缺失时 --help / 参数校验仍应可用
+    import pymupdf
     doc = pymupdf.open(pdf_path)
     report = {
         "report_id": report_id,
@@ -243,11 +248,58 @@ def parse_report(pdf_path, report_id, year):
     report["summary"], report["suggestions"] = extract_summary(doc)
     return report
 
-def main():
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="parse_reports.py",
+        description="体检报告 PDF 解析器（坐标定位版）：扫描报告目录下的电子版 PDF，"
+                    "解析化验表格 / 身体测量 / 检查结论 / 医生小结，输出结构化 JSON。",
+        epilog="""
+示例:
+  python3 scripts/parse_reports.py
+  python3 scripts/parse_reports.py --report-dir ./体检报告 --data-dir ./data
+  python3 scripts/parse_reports.py --year 2025 --dry-run
+  python3 scripts/parse_reports.py --report-dir ./体检报告 --out /tmp/reports_raw.json
+
+参数优先级: 命令行参数 > 环境变量（REPORT_DIR / DATA_DIR）> 代码默认值。
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--report-dir", default=None,
+                        help="体检报告 PDF 所在目录（默认 $REPORT_DIR，未设置则为 体检报告）")
+    parser.add_argument("--data-dir", default=None,
+                        help="数据输出目录（默认 $DATA_DIR，未设置则为 data）；被 --out 覆盖")
+    parser.add_argument("--year", type=int, default=None,
+                        help="只解析指定年份的报告（1990-2100）；不指定则解析全部可识别年份")
+    parser.add_argument("--out", default=None,
+                        help="输出 JSON 文件路径（默认 <data-dir>/reports_raw.json）")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="只打印将要写入的文件与内容摘要，不创建目录、不写文件")
+    return parser
+
+
+def main(report_dir=None, data_dir=None, year=None, out_path=None, dry_run=False):
+    """解析体检报告 PDF 并写出 reports_raw.json。
+
+    不带任何参数调用即为整改前的行为（读取环境变量 REPORT_DIR / DATA_DIR 的默认值）。
+    返回 0 表示成功或主动跳过，1 表示运行期失败。
+    """
+    report_dir = report_dir or REPORT_DIR
+    data_dir = data_dir or OUT_DIR
+    only_year = year
+    if out_path is None:
+        out_path = os.path.join(data_dir, "reports_raw.json")
+
+    # 提前探测可选依赖，避免逐份报告失败后才报错
+    try:
+        import pymupdf  # noqa: F401
+    except ImportError:
+        print("[错误] 缺少依赖 pymupdf，请先安装: pip install pymupdf")
+        return 1
+
     # 自动扫描 REPORT_DIR 下的电子版 PDF（技能化/脱敏：不硬编码任何具体文件名）
     files = []
-    if os.path.isdir(REPORT_DIR):
-        for fn in sorted(os.listdir(REPORT_DIR)):
+    if os.path.isdir(report_dir):
+        for fn in sorted(os.listdir(report_dir)):
             if fn.lower().endswith(".pdf"):
                 # 文件名内嵌报告编号（如 YYMMDD...）时尝试推断年份
                 m = re.search(r'(\d{2})(\d{4})\d{4}', fn)
@@ -256,19 +308,29 @@ def main():
                     yy = int(m.group(1))
                     year = 2000 + yy if yy < 50 else 1900 + yy
                 if year and 1990 <= year <= 2030:
+                    if only_year is not None and year != only_year:
+                        continue
                     rid = re.search(r'\d{10}', fn)
                     files.append((fn, rid.group(0) if rid else fn, year))
     if not files:
-        print(f"[警告] REPORT_DIR（{REPORT_DIR}）下未发现可识别年份的 PDF；请检查文件名格式（如 体检报告_YYMMDDXXXX.pdf）或设置 REPORT_DIR 环境变量")
-        return
+        msg = f"[警告] REPORT_DIR（{report_dir}）下未发现可识别年份的 PDF"
+        if only_year is not None:
+            msg += f"（限定 --year {only_year}）"
+        msg += "；请检查文件名格式（如 体检报告_YYMMDDXXXX.pdf）或设置 REPORT_DIR 环境变量"
+        print(msg)
+        return 0
     all_reports = []
     for fname, rid, year in files:
-        path = os.path.join(REPORT_DIR, fname)
+        path = os.path.join(report_dir, fname)
         if not os.path.exists(path):
             print(f"[跳过] {path}")
             continue
         print(f"[解析] {fname} ({year})")
-        report = parse_report(path, rid, year)
+        try:
+            report = parse_report(path, rid, year)
+        except Exception as exc:
+            print(f"[错误] 解析失败 {fname}: {exc}")
+            return 1
         all_reports.append(report)
         print(f"  日期={report['date']} 年龄={report['age']}")
         print(f"  化验指标={len(report['lab_items'])} 测量={report['measurements']}")
@@ -276,10 +338,28 @@ def main():
         print(f"  汇总条数={len(report['summary'])}")
         print()
 
-    out_path = os.path.join(OUT_DIR, "reports_raw.json")
+    if dry_run:
+        n_items = sum(len(r["lab_items"]) for r in all_reports)
+        print(f"[dry-run] 将写入: {out_path}（{len(all_reports)} 份报告 / {n_items} 条化验指标，本次不写盘）")
+        return 0
+
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(all_reports, f, ensure_ascii=False, indent=2)
     print(f"已保存: {out_path}")
+    return 0
+
+
+def cli(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.year is not None and not (1990 <= args.year <= 2100):
+        parser.error(f"--year 必须是 1990-2100 之间的年份，收到: {args.year}")
+    if args.report_dir is not None and not os.path.isdir(args.report_dir):
+        parser.error(f"--report-dir 不是有效目录: {args.report_dir}")
+    return main(report_dir=args.report_dir, data_dir=args.data_dir, year=args.year,
+                out_path=args.out, dry_run=args.dry_run)
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(cli())

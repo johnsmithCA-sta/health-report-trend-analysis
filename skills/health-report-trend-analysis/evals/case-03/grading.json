@@ -1,0 +1,23 @@
+{
+  "assertions": [
+    {
+      "text": "VERIFY_GUARD_START",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "GUARD_FUNCTION_PRESENT=True",
+      "pass": true,
+      "evidence": "输出包含要点"
+    },
+    {
+      "text": "WRITE_CALLS_OUTSIDE_GUARD=0",
+      "pass": true,
+      "evidence": "输出包含要点"
+    }
+  ],
+  "passed": 3,
+  "total": 3,
+  "score": 1.0,
+  "mode": "heuristic-substring"
+}

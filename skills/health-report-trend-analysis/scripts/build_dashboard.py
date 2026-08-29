@@ -11,19 +11,16 @@
 - 异常高亮、变化健康方向标注、临床意义与分层建议
 输出: output/health_dashboard.html
 """
+import argparse
 import json
 import os
+import sys
 
 BASE = os.environ.get("WORK_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TREND_PATH = os.path.join(BASE, "data", "trend_analysis.json")
+DEFAULT_DATA_DIR = os.path.join(BASE, "data")
+TREND_PATH = os.path.join(DEFAULT_DATA_DIR, "trend_analysis.json")
 OUT_DIR = os.path.join(BASE, "output")
-os.makedirs(OUT_DIR, exist_ok=True)
 OUT_PATH = os.path.join(OUT_DIR, "health_dashboard.html")
-
-with open(TREND_PATH, encoding="utf-8") as f:
-    trend = json.load(f)
-
-DATA_JSON = json.dumps(trend, ensure_ascii=False)
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -589,11 +586,72 @@ if(allItems.length) selectItem(allItems[0].key);
 </html>
 """
 
-def main():
-    html = HTML_TEMPLATE.replace("__DATA_JSON__", DATA_JSON)
-    with open(OUT_PATH, "w", encoding="utf-8") as f:
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="build_dashboard.py",
+        description="健康管理工作台生成器：读取 trend_analysis.json，生成单文件、"
+                    "离线可用、无云存储的交互式 HTML 工作台。",
+        epilog="""
+示例:
+  python3 scripts/build_dashboard.py
+  python3 scripts/build_dashboard.py --work-dir /path/to/work
+  python3 scripts/build_dashboard.py --out /tmp/health_dashboard.html --quiet
+
+参数优先级: 命令行参数 > 环境变量（WORK_DIR）> 代码默认值（技能根目录）。
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--work-dir", default=None,
+                        help="工作目录（默认 $WORK_DIR，未设置则为技能根目录）；其下 data/ 为输入、output/ 为输出")
+    parser.add_argument("--data-dir", default=None,
+                        help="数据目录（默认 <work-dir>/data），读取 trend_analysis.json")
+    parser.add_argument("--out", default=None,
+                        help="输出 HTML 文件路径（默认 <work-dir>/output/health_dashboard.html）")
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="静默模式：不打印生成结果（错误与警告仍会打印）")
+    return parser
+
+
+def main(trend_path=None, out_path=None, quiet=False):
+    """生成健康管理工作台 HTML。
+
+    不带任何参数调用即为整改前的行为（读取环境变量 WORK_DIR 的默认值）。
+    """
+    trend_path = trend_path or TREND_PATH
+    out_path = out_path or OUT_PATH
+    with open(trend_path, encoding="utf-8") as f:
+        trend = json.load(f)
+    data_json = json.dumps(trend, ensure_ascii=False)
+
+    html = HTML_TEMPLATE.replace("__DATA_JSON__", data_json)
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
-    print(f"已生成: {OUT_PATH} ({os.path.getsize(OUT_PATH)/1024:.0f} KB)")
+    if not quiet:
+        print(f"已生成: {out_path} ({os.path.getsize(out_path)/1024:.0f} KB)")
+    return 0
+
+
+def cli(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    base = args.work_dir or BASE
+    if args.work_dir is not None and not os.path.isdir(args.work_dir):
+        parser.error(f"--work-dir 不是有效目录: {args.work_dir}")
+    data_dir = args.data_dir or os.path.join(base, "data")
+    if args.data_dir is not None and not os.path.isdir(args.data_dir):
+        parser.error(f"--data-dir 不是有效目录: {args.data_dir}")
+    trend_path = os.path.join(data_dir, "trend_analysis.json")
+    out_path = args.out or os.path.join(base, "output", "health_dashboard.html")
+    if not os.path.isfile(trend_path):
+        print(f"[错误] 未找到输入文件: {trend_path}（请先运行 trend_analysis.py，或用 --data-dir 指定）")
+        return 1
+    try:
+        return main(trend_path=trend_path, out_path=out_path, quiet=args.quiet)
+    except (OSError, ValueError) as exc:
+        print(f"[错误] 生成失败: {exc}")
+        return 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(cli())

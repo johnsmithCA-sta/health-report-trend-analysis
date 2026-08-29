@@ -1,0 +1,9 @@
+{
+  "name": "脚本自解释·--help 全覆盖",
+  "prompt": "验证技能内全部脚本均支持 --help（体检报告指出整改前 0/10，为全场最差）。git 版本前 10 个脚本，合并 2 个 extract 脚本并新增 check_deps.py，现为 10 个。",
+  "assertions": [
+    "HELP_SCAN_START",
+    "HELP_TOTAL=10/10",
+    "ALL_SCRIPTS_HELP_OK"
+  ]
+}

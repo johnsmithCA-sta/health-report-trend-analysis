@@ -1,0 +1,8 @@
+echo "HELP_SCAN_START"
+TOTAL=0; OK=0
+for f in ../../scripts/*.py; do
+  TOTAL=$((TOTAL+1))
+  if python3 "$f" --help > /dev/null 2>&1; then OK=$((OK+1)); echo "HELP_OK=$(basename $f)"; else echo "HELP_FAIL=$(basename $f)"; fi
+done
+echo "HELP_TOTAL=$OK/$TOTAL"
+if [ "$OK" -eq "$TOTAL" ]; then echo "ALL_SCRIPTS_HELP_OK"; else echo "SOME_SCRIPTS_HELP_MISSING"; fi
