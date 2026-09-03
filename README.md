@@ -1,5 +1,21 @@
 # health-report-trend-analysis
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg) ![Release](https://img.shields.io/badge/Release-v1.1.0-green.svg) ![SkillHub](https://img.shields.io/badge/SkillHub-@user_65c8c185%2Fhealth-report-trend-analysis-orange.svg)
+
+**English** — Parses multi-year medical checkup reports into a normalized indicator time series, then generates trend reports and an offline health dashboard. Runs fully local; no data leaves the machine.
+
+Turns years of checkup PDFs gathering dust into **a health trend you can actually track** — electronic / scanned / photographed reports, 114 indicators compared year over year.
+
+**Install / 安装**
+
+```bash
+skillhub install health-report-trend-analysis --namespace user_65c8c185
+# or / 或
+git clone https://github.com/johnsmithCA-sta/health-report-trend-analysis.git
+```
+
+---
+
 体检指标趋势分析系统：把多年度、多形态的体检报告统一解析为标准化指标时间序列，产出趋势分析报告 + 交互式健康管理工作台。全程本地处理、自动脱敏、动态扩展。
 
 > 让历年"吃灰的体检报告"变成可追踪的健康趋势 —— 电子 PDF / 扫描件 / 照片三种形态统一解析，114 项指标逐年比对，异常变化一目了然。
