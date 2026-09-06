@@ -1,6 +1,6 @@
 # health-report-trend-analysis
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg) ![Release](https://img.shields.io/badge/Release-v1.1.0-green.svg) ![SkillHub](https://img.shields.io/badge/SkillHub-@user_65c8c185%2Fhealth-report-trend-analysis-orange.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg) ![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg) ![Release](https://img.shields.io/badge/Release-v1.1.1-green.svg) ![SkillHub](https://img.shields.io/badge/SkillHub-@user_65c8c185%2Fhealth-report-trend-analysis-orange.svg)
 
 **English** — Parses multi-year medical checkup reports into a normalized indicator time series, then generates trend reports and an offline health dashboard. Runs fully local; no data leaves the machine.
 

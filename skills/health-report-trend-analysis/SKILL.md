@@ -3,12 +3,22 @@ name: health-report-trend-analysis
 slug: health-report-trend-analysis
 displayName: 体检指标趋势分析
 summary: 多年度体检报告趋势分析：解析电子/扫描/照片三种报告形态，产出统一指标字典、异常与趋好趋坏判定、权威医学解读、Markdown 报告与离线 HTML 工作台。
-description: 体检指标趋势分析系统。当用户要求对历年体检报告进行数据化处理、指标趋势分析、健康管理工作台展示（体检报告、指标趋势、历年体检、健康管理、体检数据解析、化验单分析）时使用。支持 3 种输入形态：电子版 PDF（文本层）、扫描件 PDF、照片 JPG（自动合成 PDF）；产出统一指标字典（114 指标）、历年趋势比对（异常/显著变化/趋好趋坏）、权威医学解读（默沙东/丁香医生/中国指南）、结构化 Markdown 报告与离线 HTML 工作台。全程本地处理，自动生成脱敏数据集。趋势判定聚焦近三年（--focus-years 可配置）。不适用于股票/账单/合同等非体检文档的分析。
-version: 1.1.0
+description: 体检指标趋势分析系统。当用户要求对历年体检报告进行数据化处理、指标趋势分析、健康管理工作台展示（体检报告、指标趋势、历年体检、健康管理、体检数据解析、化验单分析）时使用。支持
+  3 种输入形态：电子版 PDF（文本层）、扫描件 PDF、照片 JPG（自动合成 PDF）；产出统一指标字典（114
+  指标）、历年趋势比对（异常/显著变化/趋好趋坏）、权威医学解读（默沙东/丁香医生/中国指南）、结构化 Markdown 报告与离线 HTML
+  工作台。全程本地处理，自动生成脱敏数据集。趋势判定聚焦近三年（--focus-years 可配置）。不适用于股票/账单/合同等非体检文档的分析。
+version: 1.1.1
 license: MIT
 author: johnsmithCA-sta
 homepage: https://github.com/johnsmithCA-sta/health-report-trend-analysis
 agent_created: true
+tags:
+  - 体检报告
+  - 健康趋势
+  - lab-results
+  - health-analytics
+  - 数据可视化
+  - 健康档案
 ---
 
 # 体检指标趋势分析系统
