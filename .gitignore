@@ -13,3 +13,60 @@ output/
 # 编辑器
 .idea/
 .vscode/
+
+# ==============================================================================
+# 以下为 2026-09-09 GitHub 隐私加固追加（保留上方既有规则）
+# 目的：体检原件、OCR 中间产物、指标数据集一律不入库
+#       2026-09-06 曾发生「evals runtime outputs 误入库后 revert」事件，本文件为兜底
+# 注意：.gitignore 不支持行尾注释
+# ==============================================================================
+
+# ---------- 1. 体检报告原件（最高危）----------
+*.pdf
+*.PDF
+*.jpg
+*.jpeg
+*.png
+!docs/*.png
+!examples/*.png
+
+# ---------- 2. 数据目录与中间产物 ----------
+data/
+anonymized/
+output/
+outputs/
+result/
+results/
+work/
+WORK_DIR/
+
+# ---------- 3. 具体数据文件 ----------
+dataset_std.json
+dataset-*.json
+ocr_*.json
+indicators_*.json
+anonymized_dataset*.json
+trend_*.json
+*.csv
+*.xlsx
+health_dashboard.html
+*-dashboard.html
+
+# ---------- 4. evals 运行时产物（历史事故点）----------
+evals/**/run_cmd.txt
+evals/**/output/
+evals/**/*.log
+evals/**/fixture/
+
+# ---------- 5. 凭据与备份 ----------
+.env
+.env.*
+*.pem
+*.key
+*.bak
+*.tmp
+
+# ---------- 6. 常规 ----------
+.DS_Store
+__pycache__/
+*.pyc
