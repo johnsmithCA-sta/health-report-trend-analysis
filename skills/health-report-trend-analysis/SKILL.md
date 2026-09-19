@@ -3,11 +3,8 @@ name: health-report-trend-analysis
 slug: health-report-trend-analysis
 displayName: 体检指标趋势分析
 summary: 多年度体检报告趋势分析：解析电子/扫描/照片三种报告形态，产出统一指标字典、异常与趋好趋坏判定、权威医学解读、Markdown 报告与离线 HTML 工作台。
-description: 体检指标趋势分析系统。当用户要求对历年体检报告进行数据化处理、指标趋势分析、健康管理工作台展示（体检报告、指标趋势、历年体检、健康管理、体检数据解析、化验单分析）时使用。支持
-  3 种输入形态：电子版 PDF（文本层）、扫描件 PDF、照片 JPG（自动合成 PDF）；产出统一指标字典（114
-  指标）、历年趋势比对（异常/显著变化/趋好趋坏）、权威医学解读（默沙东/丁香医生/中国指南）、结构化 Markdown 报告与离线 HTML
-  工作台。全程本地处理，自动生成脱敏数据集。趋势判定聚焦近三年（--focus-years 可配置）。不适用于股票/账单/合同等非体检文档的分析。
-version: 1.1.2
+description: 体检指标趋势分析系统。当用户要求对历年体检报告进行数据化处理、指标趋势分析、健康管理工作台展示（触发词：体检报告、指标趋势、历年体检、健康管理、体检数据解析、化验单分析）时使用。支持 3 种输入形态：电子版 PDF（文本层）、扫描件 PDF、照片 JPG（自动合成 PDF）；产出统一指标字典（114 指标）、历年趋势比对（异常/显著变化/趋好趋坏）、权威医学解读（默沙东/丁香医生/中国指南）、结构化 Markdown 报告与离线 HTML 工作台。全程本地处理，自动生成脱敏数据集。趋势判定聚焦近三年（--focus-years 可配置）。不适用于股票/账单/合同等非体检文档的分析。
+version: 1.1.3
 license: MIT
 author: johnsmithCA-sta
 homepage: https://github.com/johnsmithCA-sta/health-report-trend-analysis
@@ -45,7 +42,6 @@ tags:
 ## 环境准备
 
 ```bash
-# 依赖（已装可跳过）：pymupdf 必需；Pillow（照片合成）、pyobjc-framework-Vision/Quartz（OCR，仅 macOS）可选
 export REPORT_DIR=/path/to/体检报告目录      # 报告存放目录（含 PDF 或 年度文件夹+JPG）
 export WORK_DIR=/path/to/工作数据目录        # 数据产物目录（自动建 data/ 与 output/）
 export PY=/path/to/python                    # 建议用带依赖的 python 解释器
@@ -59,6 +55,16 @@ $PY scripts/check_deps.py --json     # 机器可读，供自动化消费
 ```
 
 退出码 `0` = 必需依赖齐全可开工；`1` = 缺必需依赖（主流程走不通，按提示装）；可选依赖缺失只影响对应输入形态，不阻断电子版 PDF 主路径。
+
+## 依赖
+
+> **完整清单（含「影响哪个脚本 / 哪项能力 / 怎么装」）由 `scripts/check_deps.py` 提供**，可直接跑它自查；此处只列包名。
+
+- `pymupdf` — **必需**：解析 PDF 文本层与坐标（`parse_reports.py` → `extract.py`）。缺失则电子版主路径走不通。
+- `Pillow` — 可选：照片 JPG 合成 PDF 与图像解码。缺失只影响照片输入形态。
+- 以下三项依赖 macOS 原生框架（**仅 macOS 可用**），供 `vision_ocr.py` 做扫描件 / 照片识别；缺失只影响非电子版输入形态：`Vision`（OCR 识别）、`Quartz`（图像解码）、`Foundation`（桥接）。
+
+**安装与降级**：`pip install pymupdf`（必需）、`pip install Pillow`（可选）；macOS OCR 三件套对应的安装命令由 `scripts/check_deps.py` 按当前环境打印（同一条命令即可补齐）。缺可选依赖时不必停手——电子版 PDF 路径照常可跑，只是对应输入形态不可用，脚本会明确提示缺哪个包、影响哪项能力。
 
 ## 执行流程
 
@@ -117,7 +123,7 @@ $PY scripts/check_deps.py --json     # 机器可读，供自动化消费
 
 ## 关键规则
 
-- **隐私硬约束**（零容忍）：全程本地，技能内不含任何外发网络调用；任务完成必须生成并校验脱敏版（不含姓名/证件号/电话/地址/医院），分享只用 `data/anonymized/anonymized_dataset_anon_shareable.json`（与完整版 `dataset_std.json` 分目录强隔离、只读 444，防止误分享完整版）
+- **隐私硬约束**（零容忍）：全程本地，技能内不含任何外发网络调用；任务完成必须生成并校验脱敏版（不含姓名/证件号/电话/地址/单位/医院），分享只用 `data/anonymized/anonymized_dataset_anon_shareable.json`（与完整版 `dataset_std.json` 分目录强隔离、只读 444，防止误分享完整版）
 - **脱敏校验先于写盘**：`build_dataset.py` 的 `_write_anon_verified()` 是脱敏版落盘的唯一出口——先在内存校验、通过后才写盘。脱敏版落盘即置只读 444，若校验在写盘之后，命中身份信息时带 PII 的文件已留在磁盘且改不动，`[FAIL]` 只是事后告警。禁止绕过该出口直接调 `_write_anon()`；`--skip-verify` 仅供排查，产物不可分享
 - **报告正文脱敏**：`report_generator.py` 的 `mask_identity_text` 默认开启（机构名称、医师姓名、手机号、身份证号掩码）；`--no-mask` 才关闭，仅供本地核对原文，生成物切勿分享
 - **新增年度报告**：放入 `REPORT_DIR` → 重跑 2→6 步即可；字典未收录指标在 `data/unrecognized` 记录，补 `indicator_dict.py` 的 `NAME_MAP` 一行即可
@@ -155,6 +161,7 @@ $PY scripts/check_deps.py --json     # 机器可读，供自动化消费
 | `references/新报告接入指南.md` | 新形态/新年份报告接入的完整步骤与排错 |
 | `references/解析与口径.md` | 电子版 PDF 的列边界坐标、口径定义 |
 | `references/OCR方法学.md` | 扫描件/照片 OCR 策略、缩写映射表维护 |
+| `references/Changelog.md` | 完整版本历史 |
 | `evals/` | 8 条回归评测（含 3 条隐私防线），`eval_loop.py --run` 可跑 |
 
 ## 使用示例（一次完整会话）
@@ -183,13 +190,3 @@ $PY scripts/check_deps.py --json     # 机器可读，供自动化消费
 2. **输出压缩**：调试命令统一 `| head -N` / `python -c` 精准提取，禁止整文件 cat 大 JSON
 3. **子代理隔离**：大文件读取/格式探测交给 Explore 子代理，主线程只收结论
 4. 验证只做一次最终截图，中间迭代用 DOM/JS 检查替代
-
-## Changelog
-
-| 版本 | 日期 | 变更 |
-|---|---|---|
-| 1.1.0 | 2026-08-29 | **工程化集中整改**：① 全部 10 脚本支持 `--help` + argparse + 退出码三态（整改前 0/10，全场最差）；② 新增 `check_deps.py` 依赖自检并写入 Step 0；③ 按年份硬编码的 `extract_2015_2020.py` / `extract_2022.py` 合并为参数化 `extract.py --year`（新年份接入不再改代码，输出格式与旧脚本逐字段一致）；④ 新增 `## 触发词` 章节 12 条 + `evals/` 8 条回归（含 3 条隐私防线用例）；⑤ **隐私修复**：脱敏版改为「先内存校验、通过后才写盘」（原为写盘后校验，命中 PII 时带身份信息的文件已落盘且只读，[FAIL] 只是事后告警）；⑥ 修复 `trend_analysis.py` 丢失测量项的死代码（`measurement_items` 追加后被重置，改为按 key 去重） |
-| 1.0.3 | 2026-08-23 | **P2 M-1 整改（技能安全）**：脱敏版强隔离——`anonymized_dataset.json` → `data/anonymized/anonymized_dataset_anon_shareable.json`（独立子目录 + 只读 444 + `_anon_shareable` 命名标记），防止完整版与脱敏版混放误分享；`build_dataset.py` 新增 `_write_anon()`（tmp+replace 原子写入 + chmod 444）；report_generator 隐私声明路径同步 |
-| 1.0.2 | 2026-08-17 | P1 整改：`build_dataset.py` 末尾新增 `verify_anonymized` 自动校验（身份证/手机号/邮箱/医院名正则扫描，命中即报错退出） |
-| 1.0.1 | 2026-08-17 | P0 整改：`report_generator.py` 新增 `mask_identity_text` 脱敏函数（手机号/身份证/医师署名掩码 + 机构泛化），小结/结论文本展示层脱敏；隐私声明与实际输出对齐 |
-| 1.0.0 | 2026-08-16 | 初版：体检指标趋势分析系统 |
